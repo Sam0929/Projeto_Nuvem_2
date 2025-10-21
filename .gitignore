@@ -4,3 +4,7 @@ venv
 .bash_history
 .sudo_as_admin_successful
 .vagrant
+.env
+outputs
+.web-server/index.html
+__pycache__/
