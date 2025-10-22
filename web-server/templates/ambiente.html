@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciando: {{ ambiente.nome }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('index') }}">&larr; Voltar para a Lista de Ambientes</a>
+<h1>Gerenciando: <strong>{{ ambiente.nome }}</strong></h1>
+<p><strong>PID do Shell:</strong> {{ ambiente.pid_bash }} | <strong>Cgroup:</strong> {{ ambiente.cgroup_name }}</p>
+
+
+<div class="card">
+    <h2>Lançar Novo Programa</h2>
+    <form action="{{ url_for('lancar_programa', ambiente_id=ambiente.id) }}" method="post">
+        <div class="form-group">
+            <label for="nome">Nome do Programa</label>
+            <input type="text" id="nome" name="nome" required placeholder="Ex: meu_servidor_web">
+        </div>
+        <div class="form-group">
+            <label for="comando">Comando a Executar</label>
+            <textarea id="comando" name="comando" rows="3" required placeholder="Ex: while true; do echo 'date' >> /tmp/out.log; sleep 1; done"></textarea>
+        </div>
+        <div class="form-group">
+            <label for="cpu_limit">Limite de CPU (%)</label>
+            <input type="number" id="cpu_limit" name="cpu_limit" min="0" placeholder="Deixar em branco ou 0 para sem limite">
+        </div>
+        <div class="form-group">
+            <label for="mem_limit">Limite de Memória (MB)</label>
+            <input type="number" id="mem_limit" name="mem_limit" min="0" placeholder="Deixar em branco ou 0 para sem limite">
+        </div>
+        <button type="submit" class="btn btn-primary">Lançar Programa</button>
+    </form>
+</div>
+
+<h2>Programas em Execução</h2>
+{% if programas %}
+    <table>
+        <thead>
+            <tr>
+                <th>Nome / Comando</th>
+                <th>PID</th>
+                <th>Status</th>
+                <th>Uso de Memória</th>
+                <th>Uso de CPU</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody id="programas-table-body">
+            {% for programa in programas %}
+            <tr id="prog-row-{{ programa.id }}">
+                <td>
+                    <strong>{{ programa.nome }}</strong>
+                    <br>
+                    <small><code>{{ programa.comando }}</code></small>
+                </td>
+                <td>{{ programa.pid }}</td>
+                <td><span id="status-{{ programa.id }}">{{ programa.status }}</span></td>
+                <td><span class="stat-value" id="mem-{{ programa.id }}">--</span> MB</td>
+                <td><span class="stat-value" id="cpu-{{ programa.id }}">--</span> %</td>
+                <td>
+                    <form action="{{ url_for('terminar_programa', programa_id=programa.id) }}" method="post">
+                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Tem a certeza que quer derrubar este processo?');">Derrubar</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>Nenhum programa em execução neste ambiente.</p>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const statsUrl = "{{ url_for('api_stats') }}"; // URL renderizada pelo Flask
+        const programasAtivos = new Map();
+
+        function initializeProgramas() {
+            const tableBody = document.getElementById('programas-table-body');
+            if (!tableBody) return;
+
+            tableBody.querySelectorAll('tr').forEach(row => {
+                const progId = row.id.split('-')[2];
+                if (progId) {
+                    programasAtivos.set(parseInt(progId), { last_cpu_usage: 0, last_check_time: Date.now() });
+                }
+            });
+        }
+        
+        async function fetchStats() {
+            try {
+                const response = await fetch(statsUrl); // Usar a variável com o URL correto
+                if (!response.ok) {
+                    console.error("Erro ao buscar estatísticas:", response.statusText);
+                    return;
+                }
+                const stats = await response.json();
+                
+                updateTable(stats);
+
+            } catch (error) {
+                console.error("Falha na requisição de estatísticas:", error);
+            }
+        }
+
+        function updateTable(stats) {
+            programasAtivos.forEach((progData, progId) => {
+                const data = stats[progId];
+                
+                const statusEl = document.getElementById(`status-${progId}`);
+                const memEl = document.getElementById(`mem-${progId}`);
+                const cpuEl = document.getElementById(`cpu-${progId}`);
+
+                if (data && data.status === 'Online') {
+                    if (statusEl) statusEl.textContent = 'EXECUTANDO';
+                    if (memEl) memEl.textContent = data.mem_mb;
+                    
+                    // Cálculo da CPU
+                    const now = Date.now();
+                    const timeDiff_s = (now - progData.last_check_time) / 1000;
+                    const cpuDiff_us = data.cpu_usage_us - progData.last_cpu_usage;
+                    
+                    if (timeDiff_s > 0 && progData.last_cpu_usage > 0) {
+                        const cpuPercent = (cpuDiff_us / (timeDiff_s * 1000000)) * 100;
+                        if(cpuEl) cpuEl.textContent = cpuPercent.toFixed(2);
+                    } else {
+                        if(cpuEl) cpuEl.textContent = '0.00'
+                    }
+
+                    progData.last_cpu_usage = data.cpu_usage_us;
+                    progData.last_check_time = now;
+
+                } else {
+                    // Se não há dados ou está offline, marca como concluído
+                    if (statusEl) {
+                        statusEl.textContent = 'CONCLUIDO';
+                        statusEl.style.color = '#7f8c8d';
+                    }
+                    if(memEl) memEl.textContent = '0.00';
+                    if(cpuEl) cpuEl.textContent = '0.00';
+                }
+            });
+        }
+
+        initializeProgramas();
+        // A primeira chamada é imediata, depois a cada 3 segundos
+        if (programasAtivos.size > 0) {
+            fetchStats();
+            setInterval(fetchStats, 3000);
+        }
+    });
+</script>
+{% endblock %}
+
