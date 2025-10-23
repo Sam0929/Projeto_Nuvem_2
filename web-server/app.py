@@ -2,11 +2,12 @@ import os
 import subprocess
 import psutil
 import mysql.connector
+import time
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
 
+# --- Configuração Inicial ---
 load_dotenv()
-
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
@@ -21,7 +22,7 @@ DB_CONFIG = {
     'database': 'ambientesdb'
 }
 
-
+# --- Página Inicial ---
 @app.route('/')
 def index():
     db = mysql.connector.connect(**DB_CONFIG)
@@ -47,7 +48,7 @@ def index():
 
     return render_template('index.html', ambientes=ambientes)
 
-
+# --- API de Status ---
 @app.route('/api/status')
 def api_status():
     db = mysql.connector.connect(**DB_CONFIG)
@@ -76,55 +77,57 @@ def api_status():
 
     return jsonify(data)
 
-
+# --- Criar novo ambiente ---
 @app.route('/criar', methods=['GET', 'POST'])
 def criar():
     if request.method == 'POST':
         nome = request.form['nome']
-        comando = request.form['comando']
+        comando = request.form['comando'].strip()
         cpu = int(request.form['cpu'])
         mem = int(request.form['mem'])
         script = request.files.get('script')
+
+        if not comando and not script:
+            flash("❌ Informe um comando ou envie um script!", "danger")
+            return redirect(url_for('criar'))
 
         dir_amb = os.path.join(BASE_DIR, nome)
         os.makedirs(dir_amb, exist_ok=True)
         log_path = os.path.join(dir_amb, "output.log")
 
-        # Determina comando a executar
+        # Se for script enviado, salva e usa ele
         if script and script.filename:
             script_path = os.path.join(dir_amb, script.filename)
             script.save(script_path)
             exec_cmd = f"bash {script_path}"
         else:
-            if not comando.strip():
-                flash("❌ É necessário informar um comando ou enviar um script!", "danger")
-                return redirect(url_for('criar'))
             exec_cmd = comando
 
-        # Novo comando funcional
-        unshare_cmd = (
+        # Executa comando de forma segura com unshare e captura PID corretamente
+        shell_cmd = (
             f"sudo unshare -m --mount-proc bash -c "
-            f"\"setsid bash -c '{exec_cmd} > {log_path} 2>&1 &' && pgrep -n $(basename {exec_cmd.split()[0]})\""
+            f"\"setsid bash -c '{exec_cmd} > {log_path} 2>&1 &' "
+            f"&& sleep 0.2 && pgrep -n $(basename {exec_cmd.split()[0]})\""
         )
 
-        process = subprocess.Popen(["bash", "-c", unshare_cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(["bash", "-c", shell_cmd],
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
 
-        pid_str = stdout.decode().strip().splitlines()[-1] if stdout else ""
-        erro_str = stderr.decode().strip()
-
+        pid_str = stdout.decode().strip()
         if not pid_str.isdigit():
-            flash(f"❌ Falha ao criar ambiente: {erro_str or 'Não foi possível obter PID.'}", "danger")
+            flash(f"❌ Falha ao obter PID. Saída: {pid_str or stderr.decode().strip()}", "danger")
             return redirect(url_for('index'))
 
         pid = int(pid_str)
-        grupo = f"amb_{nome}"
+        grupo = f"env_{nome.replace(' ', '_')}_{int(time.time())}"
         cgroup_path = os.path.join(CGROUP_BASE, grupo)
 
         # Cria o cgroup e aplica limites
         subprocess.run(["sudo", "mkdir", "-p", cgroup_path])
         subprocess.run(["sudo", "bash", "-c", f"echo {pid} > {cgroup_path}/cgroup.procs"])
-        subprocess.run(["sudo", "bash", "-c", f"echo '{int(cpu*1000)} 100000' > {cgroup_path}/cpu.max"])
+        subprocess.run(["sudo", "bash", "-c", f"echo '{int(cpu * 1000)} 100000' > {cgroup_path}/cpu.max"])
         subprocess.run(["sudo", "bash", "-c", f"echo '{mem * 1024 * 1024}' > {cgroup_path}/memory.max"])
 
         # Salva no banco
@@ -145,34 +148,57 @@ def criar():
 
     return render_template('criar_ambiente.html')
 
-
+# --- Visualizar Log ---
 @app.route('/log/<nome>')
 def log(nome):
     log_path = os.path.join(BASE_DIR, nome, "output.log")
     conteudo = open(log_path).read() if os.path.exists(log_path) else "Log não encontrado."
     return f"<pre>{conteudo}</pre>"
 
-
-@app.route('/terminar/<nome>')
-def terminar(nome):
+@app.route('/terminar/<int:id>')
+def terminar(id):
     db = mysql.connector.connect(**DB_CONFIG)
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT pid, cgroup_path FROM ambientes WHERE nome=%s", (nome,))
-    amb = cursor.fetchone()
-    if amb:
-        try:
-            pid = amb['pid']
-            if psutil.pid_exists(pid):
-                subprocess.run(["sudo", "kill", "-9", str(pid)])
-            if os.path.exists(amb['cgroup_path']):
-                subprocess.run(["sudo", "rmdir", amb['cgroup_path']])
-            cursor.execute("UPDATE ambientes SET status='terminado' WHERE nome=%s", (nome,))
+
+    try:
+        cursor = db.cursor(dictionary=True)
+        cursor.execute("SELECT nome, pid, cgroup_path FROM ambientes WHERE id=%s", (id,))
+        amb = cursor.fetchone()
+        cursor.close()
+
+        if amb:
+            cgroup_path = amb['cgroup_path']
+
+            # Mata todos os processos no cgroup
+            if os.path.exists(cgroup_path):
+                subprocess.run(
+                    ["sudo", "bash", "-c", f"echo 1 > {cgroup_path}/cgroup.kill"],
+                    check=False
+                )
+                subprocess.run(
+                    ["sudo", "bash", "-c", f"rmdir --ignore-fail-on-non-empty {cgroup_path}"],
+                    check=False
+                )
+
+            # Atualiza o status no banco
+            cursor_upd = db.cursor()
+            cursor_upd.execute(
+                "UPDATE ambientes SET status='terminado' WHERE id=%s", (id,)
+            )
             db.commit()
-            flash(f"🛑 Ambiente '{nome}' encerrado.", "info")
-        except Exception as e:
-            flash(f"❌ Erro ao encerrar: {e}", "danger")
-    cursor.close(); db.close()
+            cursor_upd.close()
+
+            flash(f"🛑 Ambiente '{amb['nome']}' encerrado com sucesso via cgroup.kill.", "info")
+        else:
+            flash("❌ Ambiente não encontrado.", "danger")
+
+    except Exception as e:
+        flash(f"❌ Erro ao encerrar: {e}", "danger")
+
+    finally:
+        db.close()
+
     return redirect(url_for('index'))
+
 
 
 if __name__ == '__main__':

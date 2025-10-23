@@ -118,7 +118,7 @@
             <td>
                 <a href="{{ url_for('log', nome=a.nome) }}" class="btn">Log</a>
                 {% if a.status == 'em_execucao' %}
-                    <a href="{{ url_for('terminar', nome=a.nome) }}" class="btn" style="background:#cc0000;">Encerrar</a>
+                    <a href="{{ url_for('terminar', id=a.id) }}" class="btn" style="background:#cc0000;">Encerrar</a>
                 {% endif %}
             </td>
         </tr>
