@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Criar Novo Ambiente</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background: #0066cc;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        main {
+            width: 90%;
+            max-width: 600px;
+            margin: 30px auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 25px;
+            color: #333;
+        }
+
+        form label {
+            display: block;
+            margin-top: 12px;
+            font-weight: 600;
+        }
+
+        input[type="text"], input[type="number"], input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+            margin-top: 5px;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus, input[type="number"]:focus, input[type="file"]:focus {
+            border-color: #0066cc;
+            outline: none;
+        }
+
+        .btn {
+            display: inline-block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 20px;
+            border: none;
+            border-radius: 6px;
+            background-color: #0066cc;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background-color: #004c99;
+        }
+
+        .back {
+            display: inline-block;
+            text-align: center;
+            width: 100%;
+            margin-top: 15px;
+            color: #0066cc;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .back:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+<header>
+    Criar Novo Ambiente
+</header>
+
+<main>
+    <h2>Preencha os dados do ambiente</h2>
+    <form method="post" enctype="multipart/form-data">
+        <label for="nome">Nome do ambiente:</label>
+        <input type="text" name="nome" id="nome" placeholder="Ex: servidor1" required>
+
+        <label for="comando">Comando a executar:</label>
+        <input type="text" name="comando" id="comando" placeholder="Ex: sleep 30 ou python script.py">
+
+        <label for="script">Upload de script (.sh):</label>
+        <input type="file" name="script" id="script">
+
+        <label for="cpu">Limite de CPU (%):</label>
+        <input type="number" name="cpu" id="cpu" value="50" required>
+
+        <label for="mem">Limite de Memória (MB):</label>
+        <input type="number" name="mem" id="mem" value="512" required>
+
+        <button type="submit" class="btn">Criar Ambiente</button>
+    </form>
+
+    <a href="{{ url_for('index') }}" class="back">← Voltar</a>
+</main>
+</body>
+</html>

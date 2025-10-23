@@ -1,37 +1,158 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Ambientes Criados</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
 
-{% block title %}Lista de Ambientes{% endblock %}
+        header {
+            background: #0066cc;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
 
-{% block content %}
-<h1>Gerenciador de Ambientes</h1>
+        main {
+            width: 90%;
+            max-width: 900px;
+            margin: 30px auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
 
-<div class="card">
-    <h2>Criar Novo Ambiente</h2>
-    <form action="{{ url_for('criar_ambiente') }}" method="post">
-        <div class="form-group">
-            <label for="nome">Nome do Ambiente</label>
-            <input type="text" id="nome" name="nome" placeholder="Ex: ambiente_teste_web" required>
-        </div>
-        <button type="submit" class="btn btn-primary">Criar Ambiente</button>
-    </form>
-</div>
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
 
-<h2>Ambientes Ativos</h2>
-{% if ambientes %}
-    {% for ambiente in ambientes %}
-    <div class="card">
-        <h3>{{ ambiente.nome }}</h3>
-        <p><strong>PID do Shell:</strong> {{ ambiente.pid_bash }} | <strong>Criado em:</strong> {{ ambiente.data_criacao.strftime('%d/%m/%Y %H:%M') }}</p>
-        <div class="card-actions">
-            <a href="{{ url_for('view_ambiente', ambiente_id=ambiente.id) }}" class="btn btn-secondary">Gerenciar Ambiente</a>
-            <form action="{{ url_for('terminar_ambiente', ambiente_id=ambiente.id) }}" method="post" style="display:inline;">
-                <button type="submit" class="btn btn-danger" onclick="return confirm('Tem a certeza que quer terminar este ambiente e todos os seus processos?');">Derrubar Ambiente</button>
-            </form>
-        </div>
+        .btn {
+            display: inline-block;
+            padding: 8px 15px;
+            border-radius: 5px;
+            background-color: #0066cc;
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background-color: #004c99;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #e9f1ff;
+        }
+
+        tr:hover {
+            background-color: #f9fbff;
+        }
+
+        .status {
+            padding: 5px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        .em_execucao { background-color: #c8f7c5; color: #1e7d22; }
+        .terminado { background-color: #ffe4c4; color: #995700; }
+        .erro { background-color: #ffc4c4; color: #b00000; }
+
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 12px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+<header>
+    Gerenciador de Ambientes
+</header>
+
+<main>
+    <div style="text-align:right; margin-bottom:10px;">
+        <a href="{{ url_for('criar') }}" class="btn">+ Criar Novo Ambiente</a>
     </div>
-    {% endfor %}
-{% else %}
-    <p>Nenhum ambiente ativo encontrado. Crie um novo acima.</p>
-{% endif %}
-{% endblock %}
 
+    <h2>Ambientes Ativos e Finalizados</h2>
+    <table>
+        <tr>
+            <th>Nome</th>
+            <th>Status</th>
+            <th>CPU (%)</th>
+            <th>Memória (MB)</th>
+            <th>Ações</th>
+        </tr>
+        {% for a in ambientes %}
+        <tr id="linha-{{ a.nome }}">
+            <td>{{ a.nome }}</td>
+            <td><span class="status {{ a.status }}">{{ a.status }}</span></td>
+            <td class="cpu">{{ a.cpu }}</td>
+            <td class="mem">{{ a.mem }}</td>
+            <td>
+                <a href="{{ url_for('log', nome=a.nome) }}" class="btn">Log</a>
+                {% if a.status == 'em_execucao' %}
+                    <a href="{{ url_for('terminar', nome=a.nome) }}" class="btn" style="background:#cc0000;">Encerrar</a>
+                {% endif %}
+            </td>
+        </tr>
+
+        {% endfor %}
+    </table>
+</main>
+
+<footer>
+    &copy; {{ 2025 }} - Projeto Nuvem | Flask + unshare + cgroups
+</footer>
+
+<script>
+async function atualizarStatus() {
+  try {
+    const res = await fetch("/api/status");
+    const dados = await res.json();
+
+    dados.forEach(d => {
+      const linha = document.querySelector(`#linha-${d.nome}`);
+      if (linha) {
+        linha.querySelector(".status").textContent = d.status;
+        linha.querySelector(".status").className = "status " + d.status;
+        linha.querySelector(".cpu").textContent = d.cpu.toFixed(1);
+        linha.querySelector(".mem").textContent = d.mem;
+      }
+    });
+  } catch (e) {
+    console.error("Erro ao atualizar status:", e);
+  }
+}
+
+setInterval(atualizarStatus, 3000);
+</script>
+
+</body>
+</html>

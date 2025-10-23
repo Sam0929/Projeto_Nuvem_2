@@ -1,10 +1,27 @@
-.local
-.cache
-venv
-.bash_history
-.sudo_as_admin_successful
-.vagrant
-.env
-outputs
-.web-server/index.html
+# Ambiente Virtual Python
+.venv/
+venv/
+*.pyc
 __pycache__/
+
+# Ficheiros de Configuração Local
+.env
+
+# Ficheiros Gerados pela Aplicação
+outputs/
+*.log
+
+# Pasta de Uploads Temporários
+/tmp/webapp_uploads/ 
+# Se a pasta for criada dentro do projeto (não recomendado):
+# webapp_uploads/ 
+
+# Ficheiros do Vagrant
+.vagrant/
+
+# Ficheiros do Sistema Operacional
+.DS_Store
+Thumbs.db
+
+# Ficheiros de IDEs (Exemplo VS Code)
+.vscode/
